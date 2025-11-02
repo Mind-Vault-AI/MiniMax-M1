@@ -44,10 +44,37 @@ if is_flash_attn_2_available():
 if is_torch_fx_available():
     _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
     
-use_triton = eval(os.environ.get("use_triton", default="False"))
-debug = eval(os.environ.get("debug", default="False"))
-do_eval = eval(os.environ.get("do_eval", default="False"))
-eval_and_not_generate = eval(os.environ.get("eval_and_not_generate", default="False"))
+def _get_env_bool(name: str, default: bool = False) -> bool:
+    """Safely parse boolean environment variables.
+
+    Prior code relied on ``eval`` with an unsupported ``default`` keyword on
+    :func:`os.environ.get`, which both raised an exception at import time and
+    opened the door to executing arbitrary input.  We now perform an explicit
+    parse that recognises common truthy / falsy strings and falls back to the
+    provided default, logging a warning when the value cannot be interpreted.
+    """
+
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+
+    value = raw_value.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+
+    warnings.warn(
+        f"Unexpected boolean environment value for {name!r}: {raw_value!r}. "
+        f"Falling back to default={default}."
+    )
+    return default
+
+
+use_triton = _get_env_bool("use_triton", default=False)
+debug = _get_env_bool("debug", default=False)
+do_eval = _get_env_bool("do_eval", default=False)
+eval_and_not_generate = _get_env_bool("eval_and_not_generate", default=False)
 BLOCK = 256
 
 logger = logging.get_logger(__name__)
