@@ -5,13 +5,24 @@
     "notes": "Replace this entry with the real metadata for your most recent VAULT TV release.",
     "host": "Mind-Vault-AI",
     "theme": "Global cravings kickoff",
-    "link": "https://example.com/vault-tv/cravechain-launch"
+    "link": "https://example.com/vault-tv/cravechain-launch",
+    "location": "Amsterdam Studio"
   },
   {
     "title": "Sample Episode: Cravings Around the Globe",
     "date": "2025-03-15T16:30:00+00:00",
     "notes": "Demonstrates the ISO 8601 date format used by the checker script.",
     "host": "Mind-Vault-AI",
-    "theme": "Taste trails"
+    "theme": "Taste trails",
+    "producer": "CraveChain Studios"
+  },
+  {
+    "title": "Sample Episode: Desire Meets Delivery",
+    "date": "2025-04-20T09:00:00Z",
+    "notes": "Highlights the checker handling of the Zulu timezone suffix.",
+    "host": "Mind-Vault-AI",
+    "theme": "Desire x Delivery",
+    "link": "https://example.com/vault-tv/desire-meets-delivery",
+    "distribution": "Global"
   }
 ]

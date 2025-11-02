@@ -56,6 +56,15 @@ class VaultTvEntry:
         )
 
 
+@dataclass(frozen=True)
+class ReportResult:
+    """Represents the outcome of summarising the feed."""
+
+    message: str
+    is_stale: bool
+    entry_count: int
+
+
 def _resolve_default_feed() -> Path:
     """Return the first available default feed path.
 
@@ -84,9 +93,16 @@ def _parse_date(raw: str) -> datetime:
 
     normalised = raw.replace("Z", "+00:00")
     try:
-        return datetime.fromisoformat(normalised)
+        parsed = datetime.fromisoformat(normalised)
     except ValueError as exc:  # pragma: no cover - defensive guard
         raise ValueError(f"Invalid ISO 8601 date: {raw!r}") from exc
+
+    if parsed.tzinfo is None:
+        # Assume UTC for feeds that omit an explicit timezone. This keeps the
+        # workflow forgiving while avoiding naive datetimes in later math.
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(timezone.utc)
 
 
 def _load_entries(feed_path: Path) -> List[VaultTvEntry]:
@@ -138,19 +154,46 @@ def _load_entries(feed_path: Path) -> List[VaultTvEntry]:
 
 def _format_metadata(entry: VaultTvEntry) -> Iterable[str]:
     for key, value in entry.metadata.items():
-        yield f"  {key}: {value}"
+        yield f"    {key}: {value}"
 
 
-def report_latest(feed_path: Path, *, stale_after: Optional[int] = None) -> str:
+def _format_timedelta(delta: timedelta) -> str:
+    """Return a compact human readable representation of a time delta."""
+
+    total_seconds = int(delta.total_seconds())
+    sign = "-" if total_seconds < 0 else ""
+    total_seconds = abs(total_seconds)
+
+    days, remainder = divmod(total_seconds, 24 * 3600)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, _ = divmod(remainder, 60)
+
+    segments = []
+    if days:
+        segments.append(f"{days}d")
+    if hours:
+        segments.append(f"{hours}h")
+    if minutes or not segments:
+        segments.append(f"{minutes}m")
+
+    return sign + " ".join(segments)
+
+
+def report_latest(
+    feed_path: Path, *, stale_after: Optional[int] = None
+) -> ReportResult:
     """Generate a human-readable report of the latest VAULT TV entry."""
 
     entries = _load_entries(feed_path)
     latest_entry = max(entries, key=lambda item: item.published_at)
+    now = datetime.now(timezone.utc)
+    age = now - latest_entry.published_at
 
     lines = [
         "Latest VAULT TV release detected:",
         f"  Title: {latest_entry.title}",
         f"  Date:  {latest_entry.published_at.isoformat()}",
+        f"  Age:   {_format_timedelta(age)} (as of {now.isoformat()})",
     ]
 
     metadata_lines = list(_format_metadata(latest_entry))
@@ -160,17 +203,17 @@ def report_latest(feed_path: Path, *, stale_after: Optional[int] = None) -> str:
 
     lines.append(f"Total releases in feed: {len(entries)}")
 
+    is_stale = False
     if stale_after is not None:
-        now = datetime.now(timezone.utc)
-        age = now - latest_entry.published_at
         threshold = timedelta(days=stale_after)
         if age > threshold:
+            is_stale = True
             lines.append(
                 "⚠️  Latest release is older than the configured staleness window "
                 f"({age.days} days > {stale_after} days)."
             )
 
-    return "\n".join(lines)
+    return ReportResult("\n".join(lines), is_stale=is_stale, entry_count=len(entries))
 
 
 def main() -> int:
@@ -193,7 +236,18 @@ def main() -> int:
             "of days."
         ),
     )
+    parser.add_argument(
+        "--fail-on-stale",
+        action="store_true",
+        help=(
+            "Exit with a non-zero status code when the latest release exceeds the "
+            "--stale-after window."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.stale_after is not None and args.stale_after <= 0:
+        parser.error("--stale-after must be a positive integer")
 
     try:
         feed_path = args.feed if args.feed is not None else _resolve_default_feed()
@@ -201,7 +255,11 @@ def main() -> int:
     except (FileNotFoundError, ValueError) as exc:
         parser.error(str(exc))
 
-    print(report)
+    print(report.message)
+
+    if report.is_stale and args.fail_on_stale:
+        return 1
+
     return 0
 
 
