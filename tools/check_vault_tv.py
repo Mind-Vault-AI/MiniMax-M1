@@ -145,7 +145,7 @@ def _load_entries(feed_path: Path) -> List[VaultTvEntry]:
     """Load and validate entries from the feed file."""
 
     try:
-        raw_content = feed_path.read_text(encoding="utf-8")
+        latest_entry = max(entries, key=lambda item: (item.published_at, item.title))
     except FileNotFoundError:
         raise FileNotFoundError(
             f"Feed not found at {feed_path}. Provide a JSON file using the sample "
