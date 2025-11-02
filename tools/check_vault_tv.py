@@ -164,11 +164,13 @@ def _load_entries(feed_path: Path) -> List[VaultTvEntry]:
             f"Feed file {feed_path} must contain a JSON array of entries."
         )
 
-    validated: List[VaultTvEntry] = []
-    for idx, item in enumerate(payload):
-        if not isinstance(item, dict):
-            raise ValueError(
-                f"Feed entry #{idx + 1} in {feed_path} is not a JSON object."
+            if age > threshold:
+                # Round up to the nearest whole day for a more intuitive message.
+                age_in_days = int((age.total_seconds() + 86399) // 86400)
+                lines.append(
+                    "⚠️  Latest release is older than the configured staleness window "
+                    f"({age_in_days} days > {stale_after} days)."
+                )
             )
 
         try:
