@@ -19,9 +19,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
-DEFAULT_FEED_CANDIDATES: Sequence[Path] = (
-    Path("data/vault_tv_feed.json"),
-    Path("data/vault_tv_feed.sample.json"),
+_RELATIVE_FEED_TARGETS: Sequence[str] = (
+    "data/vault_tv_feed.json",
+    "data/vault_tv_feed.sample.json",
 )
 
 
@@ -63,10 +63,34 @@ class ReportResult:
     message: str
     is_stale: bool
     entry_count: int
+    latest_entry: VaultTvEntry
+    generated_at: datetime
+    age: timedelta
+
+    def to_payload(self) -> Dict[str, Any]:
+        """Return a JSON-serialisable payload describing the report."""
+
+        return {
+            "generated_at": self.generated_at.isoformat(),
+            "entry_count": self.entry_count,
+            "is_stale": self.is_stale,
+            "latest_release": {
+                "title": self.latest_entry.title,
+                "date": self.latest_entry.published_at.isoformat(),
+                "age_seconds": int(self.age.total_seconds()),
+                "age_human": _format_timedelta(self.age),
+                "metadata": dict(self.latest_entry.metadata),
+            },
+            "message": self.message,
+        }
 
 
 def _resolve_default_feed() -> Path:
     """Return the first available default feed path.
+
+    The resolver checks both the current working directory and the repository
+    root (relative to this script) so the command works even when invoked from
+    automation pipelines.
 
     Raises
     ------
@@ -74,7 +98,19 @@ def _resolve_default_feed() -> Path:
         If none of the known feed candidates are present.
     """
 
-    for candidate in DEFAULT_FEED_CANDIDATES:
+    script_dir = Path(__file__).resolve().parent
+    repo_root = script_dir.parent
+
+    candidates: List[Path] = []
+    seen: set[Path] = set()
+    for relative_target in _RELATIVE_FEED_TARGETS:
+        for base in (Path.cwd(), repo_root):
+            candidate = (base / relative_target).resolve()
+            if candidate not in seen:
+                seen.add(candidate)
+                candidates.append(candidate)
+
+    for candidate in candidates:
         if candidate.exists():
             return candidate
 
@@ -213,7 +249,14 @@ def report_latest(
                 f"({age.days} days > {stale_after} days)."
             )
 
-    return ReportResult("\n".join(lines), is_stale=is_stale, entry_count=len(entries))
+    return ReportResult(
+        "\n".join(lines),
+        is_stale=is_stale,
+        entry_count=len(entries),
+        latest_entry=latest_entry,
+        generated_at=now,
+        age=age,
+    )
 
 
 def main() -> int:
@@ -244,6 +287,15 @@ def main() -> int:
             "--stale-after window."
         ),
     )
+    parser.add_argument(
+        "--output",
+        choices=("text", "json"),
+        default="text",
+        help=(
+            "Choose between human-readable text (default) or JSON formatted "
+            "output for automation."
+        ),
+    )
     args = parser.parse_args()
 
     if args.stale_after is not None and args.stale_after <= 0:
@@ -255,7 +307,10 @@ def main() -> int:
     except (FileNotFoundError, ValueError) as exc:
         parser.error(str(exc))
 
-    print(report.message)
+    if args.output == "json":
+        print(json.dumps(report.to_payload(), indent=2))
+    else:
+        print(report.message)
 
     if report.is_stale and args.fail_on_stale:
         return 1

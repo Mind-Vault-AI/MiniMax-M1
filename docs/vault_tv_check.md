@@ -38,7 +38,7 @@ If the report should cause automations to fail when the release is stale, includ
 python tools/check_vault_tv.py --stale-after 14 --fail-on-stale
 ```
 
-The command prints a summary similar to:
+By default the command prints a human-readable summary similar to:
 
 ```
 Latest VAULT TV release detected:
@@ -51,6 +51,14 @@ Latest VAULT TV release detected:
 Total releases in feed: 12
 ⚠️  Latest release is older than the configured staleness window (18 days > 14 days).
 ```
+
+If you are wiring the checker into dashboards or alerts, switch the output to JSON:
+
+```bash
+python tools/check_vault_tv.py --stale-after 14 --output json
+```
+
+This yields a structured payload with the latest release, its age in seconds, and the staleness indicator so downstream tooling can react automatically.
 
 If the feed is missing or malformed, the script reports a detailed error so you can correct the data quickly.
 
@@ -65,7 +73,7 @@ If the feed is missing or malformed, the script reports a detailed error so you 
 Apply a rapid continuous-improvement lens so the feed never drifts from expectations:
 
 - **PDCA (Plan-Do-Check-Act):** Plan the next VAULT TV release update, publish the metadata, run the checker to verify freshness, then act on the findings (for example, promote or refresh content).
-- **Poka-Yoke (error-proofing):** Use the `--fail-on-stale` flag in CI or scheduled jobs so outdated drops are caught automatically before they reach the audience.
+- **Poka-Yoke (error-proofing):** Use the `--fail-on-stale` flag in CI or scheduled jobs so outdated drops are caught automatically before they reach the audience. Pair it with `--output json` for structured alerts that match CraveChain's automation playbooks.
 - **Six Sigma mindset:** Track the age output to keep variation in release cadence within the tolerance your team sets.
 - **1W5H review:** For every release confirm the *what, why, who, where, when,* and *how* metadata fields inside the feed to avoid missing contextual details.
 
